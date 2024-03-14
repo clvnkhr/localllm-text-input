@@ -91,7 +91,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    def hotkeys(client):
+    def hotkeys(client: httpx.Client):
         return {
             str(Key.f9.value): (lambda: fix_selection(client, vim_mode=args.vim)),
             str(Key.f10.value): (lambda: fix_current_line(client, vim_mode=args.vim)),

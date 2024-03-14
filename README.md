@@ -15,7 +15,7 @@ then `ollama run mistral:7b-instruct-q4_K_S`
 
 ### Running
 
-`python llllm.py`
+`python llllm.py`. If using (neo)vim, `python llllm.py -v`.
 
 ## Permissions
 
