@@ -1,10 +1,12 @@
 import argparse
+import time
+from string import Template
+
 from pynput import keyboard
 from pynput.keyboard import Key, Controller
 import pyperclip
-import time
 import httpx
-from string import Template
+
 
 controller = Controller()
 httpx.Timeout(connect=5, read=None, write=5, pool=5)
@@ -26,15 +28,21 @@ $text
 """
 )
 
-# post request example to test API
-# curl -X POST http://localhost:11434/api/generate -d '{
-#   "model": "mistral:7b-instruct-q4_K_S",
-#   "prompt":"Here is a story about llamas eating grass",
-#   "stream": false
-#  }'
+
+def _test_api():
+    "this is just here for me to easily copy..."
+    return """
+post request example to test API
+curl -X POST http://localhost:11434/api/generate -d '{
+  "model": "mistral:7b-instruct-q4_K_S",
+  "prompt":"Here is a story about llamas eating grass",
+  "stream": false
+ }'
+"""
 
 
 def fix(text: str, client: httpx.Client) -> str:
+    """Fixes typos in text by asking the ollama client."""
     prompt = FIX_PROMPT_TEMPLATE.substitute(text=text)
     response = client.post(
         OLLAMA_ENDPOINT,
@@ -47,17 +55,29 @@ def fix(text: str, client: httpx.Client) -> str:
 
 
 def fix_current_line(client: httpx.Client, vim_mode: bool = False) -> None:
-    # on mac, select line by pressing cmd + shift + left
+    """Selects the current line and calls the `fix_selection` function, passing the `client` as an
+    argument."""
+
     if vim_mode:
+        # 0  = go to beginning of line
+        # v$ = visual selection to end of line
         _ = [controller.tap(k) for k in "0v$"]
     else:
-        keys = [Key.cmd, Key.shift, Key.left]
-        _ = [controller.press(k) for k in keys]
-        _ = [controller.release(k) for k in keys]
+        # on mac, (cmd <-) = go to beginning of line
+        # (cmd shift ->)   = visual selection to end of line
+        with controller.pressed(Key.cmd):
+            controller.tap(Key.right)
+            with controller.pressed(Key.shift):
+                controller.tap(Key.left)
     fix_selection(client)
 
 
 def fix_selection(client: httpx.Client, vim_mode: bool = False) -> None:
+    """Yanks the selection,
+    puts the clipboard into python with pyperclip,
+    calls fix on the text (passing client on),
+    and pastes with pyperclip."""
+
     def yank():
         if vim_mode:
             controller.tap("y")  # y = yank in visual mode
