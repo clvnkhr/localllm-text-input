@@ -102,13 +102,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with httpx.Client(timeout=None) as client:
-        with keyboard.GlobalHotKeys(
-            {
-                str(Key.f9.value): (lambda: fix_selection(client, vim_mode=args.vim)),
-                str(Key.f10.value): (
-                    lambda: fix_current_line(client, vim_mode=args.vim)
-                ),
-            },
-        ) as h:
-            h.join()
+    def hotkeys(client):
+        return {
+            str(Key.f9.value): (lambda: fix_selection(client, vim_mode=args.vim)),
+            str(Key.f10.value): (lambda: fix_current_line(client, vim_mode=args.vim)),
+        }
+
+    with (
+        httpx.Client(timeout=None) as client,
+        keyboard.GlobalHotKeys(hotkeys=hotkeys(client)) as h,
+    ):
+        h.join()
