@@ -1,3 +1,4 @@
+import argparse
 from pynput import keyboard
 from pynput.keyboard import Key, Controller
 import pyperclip
@@ -44,7 +45,7 @@ def fix(text: str, client: httpx.Client) -> str:
     return response.json()["response"].strip()
 
 
-def fix_current_line(client: httpx.Client) -> None:
+def fix_current_line(client: httpx.Client, vim_mode: bool = False) -> None:
     # on mac, select line by pressing cmd + shift + left
     keys = [Key.cmd, Key.shift, Key.left]
     _ = [controller.press(k) for k in keys]
@@ -52,23 +53,62 @@ def fix_current_line(client: httpx.Client) -> None:
     fix_selection(client)
 
 
-def fix_selection(client: httpx.Client) -> None:
-    with controller.pressed(Key.cmd):
-        controller.tap("c")
+# def fix_selection(client: httpx.Client) -> None:
+#     with controller.pressed(Key.cmd):
+#         controller.tap("c")
+#     time.sleep(0.1)
+#     text = pyperclip.paste()
+#     pyperclip.copy(fix(text, client))
+#     time.sleep(0.1)
+#     with controller.pressed(Key.cmd):
+#         controller.tap("v")
+def fix_selection(client: httpx.Client, vim_mode: bool = False) -> None:
+    if vim_mode:
+        controller.tap("y")  # y = yank in visual mode
+    else:
+        with controller.pressed(Key.cmd):
+            controller.tap("c")
     time.sleep(0.1)
+
     text = pyperclip.paste()
     pyperclip.copy(fix(text, client))
     time.sleep(0.1)
-    with controller.pressed(Key.cmd):
-        controller.tap("v")
 
+    if vim_mode:
+        # gvp = repeat previous selection then paste
+        _ = [controller.tap(k) for k in "gvp"]
+    else:
+        with controller.pressed(Key.cmd):
+            controller.tap("v")
+
+
+# if __name__ == "__main__":
+#     with httpx.Client(timeout=None) as client:
+#         with keyboard.GlobalHotKeys(
+#             {
+#                 str(Key.f9.value): (lambda: fix_selection(client)),
+#                 str(Key.f10.value): (lambda: fix_current_line(client)),
+#             },
+#         ) as h:
+#             h.join()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-v",
+        "--vim",
+        action="store_true",
+        help="Enable Vim mode (yanking instead of cmd-c, etc)",
+    )
+    args = parser.parse_args()
+
     with httpx.Client(timeout=None) as client:
         with keyboard.GlobalHotKeys(
             {
-                str(Key.f9.value): (lambda: fix_selection(client)),
-                str(Key.f10.value): (lambda: fix_current_line(client)),
+                str(Key.f9.value): (lambda: fix_selection(client, vim_mode=args.vim)),
+                str(Key.f10.value): (
+                    lambda: fix_current_line(client, vim_mode=args.vim)
+                ),
             },
         ) as h:
             h.join()
