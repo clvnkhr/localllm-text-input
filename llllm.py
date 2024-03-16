@@ -1,6 +1,7 @@
 import argparse
 import time
 from string import Template
+from typing import Callable
 
 from pynput import keyboard
 from pynput.keyboard import Key, Controller
@@ -28,11 +29,21 @@ $text
 """
 )
 
+IMPROVE_PROMPT_TEMPLATE = Template(
+    """Rewrite this text using professional english suitable \
+for publication in a mathematical research journal. \
+Do not modify LaTeX code or introduce escape characters. \
+Return only the corrected text, do not include a preamble, \
+and do not place the text in a code block:\
+
+$text
+"""
+)
+
 
 def _test_api():
-    "this is just here for me to easily copy..."
+    "Post request example to test API. this is just here for me to easily copy..."
     return """
-post request example to test API
 curl -X POST http://localhost:11434/api/generate -d '{
   "model": "mistral:7b-instruct-q4_K_S",
   "prompt":"Here is a story about llamas eating grass",
@@ -42,19 +53,30 @@ curl -X POST http://localhost:11434/api/generate -d '{
 
 
 def fix(text: str, client: httpx.Client) -> str:
+    return ask(client, prompt=FIX_PROMPT_TEMPLATE.substitute(text=text))
+
+
+def improve(text: str, client: httpx.Client) -> str:
+    return ask(client, prompt=IMPROVE_PROMPT_TEMPLATE.substitute(text=text))
+
+
+def ask(client: httpx.Client, prompt: str) -> str:
     """Fixes typos in text by asking the ollama client."""
-    prompt = FIX_PROMPT_TEMPLATE.substitute(text=text)
     response = client.post(
         OLLAMA_ENDPOINT,
         json={"prompt": prompt, **OLLAMA_CONFIG},
         headers={"Content-Type": "application/json"},
     )
     if response.status_code != 200:
-        return text + f"!ERROR{response.status_code}"
+        return f"!ERROR{response.status_code}, {prompt=}"
     return response.json()["response"].strip()
 
 
-def fix_current_line(client: httpx.Client, vim_mode: bool = False) -> None:
+def on_current_line(
+    act: Callable[[str, httpx.Client], str],
+    client: httpx.Client,
+    vim_mode: bool = False,
+) -> None:
     """Selects the current line and calls the `fix_selection` function, passing the `client` as an
     argument."""
 
@@ -69,13 +91,17 @@ def fix_current_line(client: httpx.Client, vim_mode: bool = False) -> None:
             controller.tap(Key.right)
             with controller.pressed(Key.shift):
                 controller.tap(Key.left)
-    fix_selection(client)
+    on_selection(act, client, vim_mode=vim_mode)
 
 
-def fix_selection(client: httpx.Client, vim_mode: bool = False) -> None:
+def on_selection(
+    act: Callable[[str, httpx.Client], str],
+    client: httpx.Client,
+    vim_mode: bool = False,
+) -> None:
     """Yanks the selection,
     puts the clipboard into python with pyperclip,
-    calls fix on the text (passing client on),
+    uses the callback act on the text (passing client on),
     and pastes with pyperclip."""
 
     def yank():
@@ -96,7 +122,11 @@ def fix_selection(client: httpx.Client, vim_mode: bool = False) -> None:
     yank()
     time.sleep(0.1)
     text = pyperclip.paste()
-    pyperclip.copy(fix(text, client))
+    if not text:
+        # empty yank indicates some sort of error.
+        print("empty yank")
+        return
+    pyperclip.copy(act(text, client))
     time.sleep(0.1)
     paste()
 
@@ -113,8 +143,16 @@ if __name__ == "__main__":
 
     def hotkeys(client: httpx.Client):
         return {
-            str(Key.f9.value): (lambda: fix_selection(client, vim_mode=args.vim)),
-            str(Key.f10.value): (lambda: fix_current_line(client, vim_mode=args.vim)),
+            str(Key.f9.value): (lambda: on_selection(fix, client, vim_mode=args.vim)),
+            # str(Key.f10.value): (
+            #     lambda: on_current_line(fix, client, vim_mode=args.vim)
+            # ),
+            str(Key.f10.value): (
+                lambda: on_selection(improve, client, vim_mode=args.vim)
+            ),
+            # str(Key.f8.value): (
+            #     lambda: on_current_line(improve, client, vim_mode=args.vim)
+            # ),
         }
 
     with (
